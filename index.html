@@ -21,6 +21,14 @@
   </script>
 </head>
 <body>
+  <!-- Error dikhane wala debug code (kaam hone ke baad hata sakte ho) -->
+  <script>
+  window.addEventListener('error', function (e) {
+    var t = e.target && e.target.src ? 'File load nahi hui: ' + e.target.src : (e.message || 'error');
+    document.body.insertAdjacentHTML('afterbegin', '<pre style="white-space:pre-wrap;background:#fde8df;color:#7a2a0c;padding:12px;margin:0;font-size:14px">' + t + '</pre>');
+  }, true);
+  </script>
+
   <!-- LOGIN -->
   <div class="login-wrap hidden" id="login">
     <form class="login-card" id="loginForm" autocomplete="on">
@@ -76,7 +84,7 @@
   </div>
 
   <div class="setup-banner hidden" id="setupBanner" style="position:fixed;inset:0 0 auto 0;z-index:300">
-    Setup pending: js/config.js mein Supabase URL aur anon key daalo.
+    Setup pending: js/config.js mein Firebase config daalo.
   </div>
 
   <script type="module" src="js/admin.js"></script>
