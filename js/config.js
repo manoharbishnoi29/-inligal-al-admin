@@ -1,13 +1,12 @@
-// Firebase Console -> Project settings -> General -> Your apps -> Web app -> firebaseConfig
-// Yahan apni firebaseConfig ki values paste karo (user repo wali hi).
+// Firebase config (user repo wali hi)
 export const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT_ID.firebasestorage.app',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+  apiKey: 'AIzaSyB7pV_gaDQHf62KnI5fpJkaZ8IU1nvnXUM',
+  authDomain: 'inllegal-ai.firebaseapp.com',
+  projectId: 'inllegal-ai',
+  storageBucket: 'inllegal-ai.firebasestorage.app',
+  messagingSenderId: '101140162061',
+  appId: '1:101140162061:web:a428313d37ae1e49509744',
 };
 
-// Tumhari user chat site ka link (Back to chat / Open user chat ke liye)
-export const USER_SITE_URL = 'https://manoharbishnoi29.github.io/YOUR_USER_REPO/';
+// Apni user chat site ka asli link yahan daalo
+export const USER_SITE_URL = 'https://manoharbishnoi29.github.io/TUMHARI-USER-REPO-KA-NAAM/';
