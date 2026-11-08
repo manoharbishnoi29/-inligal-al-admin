@@ -1,7 +1,7 @@
 {
-  "name": "AutoReply Admin",
-  "short_name": "AR Admin",
-  "description": "Admin panel for AutoReply System.",
+  "name": "Inliegal AI Admin",
+  "short_name": "Inliegal Admin",
+  "description": "Admin panel for Inliegal AI.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
