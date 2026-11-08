@@ -1,19 +1,14 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-
-export const configured =
-  /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/i.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 40;
-
-export function makeClient(persist) {
-  if (!configured) return null;
-  const auth = persist
-    ? { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'autoreply-admin-auth' }
-    : { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false };
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth });
-}
-
+/* ---------- small utils ---------- */
 export const esc = (s = '') =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+export function uuid() {
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 3) | 8).toString(16);
+  });
+}
 
 export function safeUrl(u) {
   try {
@@ -25,6 +20,13 @@ export function safeUrl(u) {
   } catch {
     return null;
   }
+}
+
+export function formatText(t = '') {
+  let s = esc(t);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  return s.replace(/\n/g, '<br>');
 }
 
 export const debounce = (fn, ms = 250) => {
@@ -47,6 +49,7 @@ export function timeAgo(d) {
   return new Date(d).toLocaleDateString();
 }
 
+/* ---------- icons ---------- */
 const P = {
   send: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
@@ -76,6 +79,7 @@ const P = {
 export const icon = (n, size = 20) =>
   `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
 
+/* ---------- theme ---------- */
 export function initTheme(btn) {
   const meta = document.querySelector('meta[name="theme-color"]');
   const apply = (t) => {
@@ -91,6 +95,7 @@ export function initTheme(btn) {
   btn?.addEventListener('click', () => apply(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
 }
 
+/* ---------- toast ---------- */
 export function toast(msg, type = 'info') {
   let box = document.getElementById('toasts');
   if (!box) {
@@ -109,6 +114,7 @@ export function toast(msg, type = 'info') {
   }, 3200);
 }
 
+/* ---------- PWA ---------- */
 export function registerSW() {
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
