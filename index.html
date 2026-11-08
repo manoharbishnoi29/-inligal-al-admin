@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Admin &middot; AutoReply System</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0b5d55">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem('ar-theme') ||
+        (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div class="login-wrap hidden" id="login">
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <div class="logo" id="loginLogo"></div>
+      <h1>Admin sign in</h1>
+      <p>Sign in to manage answers, links and user questions.</p>
+      <div class="err hidden" id="loginErr" role="alert"></div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input class="input" id="email" type="email" required autocomplete="username" placeholder="admin@example.com">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="pw">
+          <input class="input" id="password" type="password" required autocomplete="current-password" placeholder="Your password">
+          <button type="button" class="icon-btn" id="pwToggle" aria-label="Show password"></button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="loginBtn" type="submit" style="width:100%">Sign in</button>
+      <p style="margin:18px 0 0;font-size:.85rem"><a href="#" id="backLink">&larr; Back to chat</a></p>
+    </form>
+  </div>
+
+  <!-- APP -->
+  <div class="shell hidden" id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-brand">
+        <div class="logo" id="sideLogo"></div>
+        <div><b>AutoReply</b><small>Admin panel</small></div>
+      </div>
+      <nav class="nav" id="nav">
+        <a href="#dashboard" data-v="dashboard"></a>
+        <a href="#questions" data-v="questions"></a>
+        <a href="#unanswered" data-v="unanswered"></a>
+      </nav>
+      <div class="side-foot">
+        <div class="who" id="who"></div>
+        <button type="button" id="openChat"></button>
+        <button type="button" id="logoutBtn"></button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu"></button>
+        <h1 id="title">Dashboard</h1>
+        <button class="icon-btn" id="refreshBtn" aria-label="Refresh" title="Refresh"></button>
+        <button class="icon-btn" id="themeBtn"></button>
+      </header>
+      <main class="view" id="view"></main>
+    </div>
+  </div>
+
+  <div class="setup-banner hidden" id="setupBanner" style="position:fixed;inset:0 0 auto 0;z-index:300">
+    Setup pending: js/config.js mein Supabase URL aur anon key daalo.
+  </div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
