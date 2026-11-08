@@ -1,15 +1,20 @@
-import { makeClient, configured, esc, safeUrl, toast, icon, initTheme, debounce, registerSW, timeAgo } from './shared.js';
+import { esc, safeUrl, toast, icon, initTheme, debounce, registerSW, timeAgo, uuid } from './shared.js';
+import { configured, app, db, fs } from './firebase.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { USER_SITE_URL } from './config.js';
 
-const sb = makeClient(true);
+const auth = configured ? getAuth(app) : null;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const view = $('#view');
+const col = (n) => fs.collection(db, n);
+const countOf = async (q) => (await fs.getCountFromServer(q)).data().count;
 
 let QA = [];
 let UN = [];
 let shown = 25;
 let unTab = 'pending';
+let notAdminMsg = '';
 const filters = { q: '', status: 'all', cat: 'all' };
 
 const KINDS = [['app', 'App link'], ['website', 'Website link'], ['apk', 'APK download']];
@@ -111,42 +116,36 @@ const parseKeywords = (s) => [...new Set(String(s).split(/[,\n]+/).map((k) => k.
 
 /* ---------- data helpers ---------- */
 async function loadQA() {
-  const { data, error } = await sb.from('qa_items').select('*, qa_links(id,kind,label,url,sort_order)').order('updated_at', { ascending: false }).limit(2000);
-  if (error) throw error;
-  QA = data || [];
+  const snap = await fs.getDocs(fs.query(col('qa'), fs.orderBy('updatedAt', 'desc'), fs.limit(2000)));
+  QA = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 async function loadUN() {
-  const { data, error } = await sb.from('unanswered_questions').select('*').order('created_at', { ascending: false }).limit(500);
-  if (error) throw error;
-  UN = data || [];
+  const snap = await fs.getDocs(fs.query(col('unanswered'), fs.orderBy('createdAt', 'desc'), fs.limit(500)));
+  UN = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   updateBadge();
 }
 async function updateBadge() {
-  const { count } = await sb.from('unanswered_questions').select('id', { count: 'exact', head: true }).eq('status', 'pending');
   const b = $('#badge');
   if (!b) return;
-  b.textContent = count ?? 0;
-  b.classList.toggle('hidden', !count);
+  try {
+    const n = await countOf(fs.query(col('unanswered'), fs.where('status', '==', 'pending')));
+    b.textContent = n;
+    b.classList.toggle('hidden', !n);
+  } catch (e) {
+    console.warn(e);
+  }
 }
 
-async function saveItem({ id, question, answer, keywords, category, is_active }, links) {
-  const payload = { question, answer, keywords, category, is_active };
-  let itemId = id;
+/** Create or update a Q&A (links are stored inside the same document). Returns the id. */
+async function saveItem({ id, question, answer, keywords, category, isActive }, links) {
+  const now = Date.now();
+  const payload = { question, answer, keywords, category, isActive, links, updatedAt: now };
   if (id) {
-    const { error } = await sb.from('qa_items').update(payload).eq('id', id);
-    if (error) throw error;
-  } else {
-    const { data, error } = await sb.from('qa_items').insert(payload).select('id').single();
-    if (error) throw error;
-    itemId = data.id;
+    await fs.updateDoc(fs.doc(db, 'qa', id), payload);
+    return id;
   }
-  const del = await sb.from('qa_links').delete().eq('qa_id', itemId);
-  if (del.error) throw del.error;
-  if (links.length) {
-    const { error } = await sb.from('qa_links').insert(links.map((l, i) => ({ qa_id: itemId, ...l, sort_order: i })));
-    if (error) throw error;
-  }
-  return itemId;
+  const ref = await fs.addDoc(col('qa'), { ...payload, createdAt: now });
+  return ref.id;
 }
 
 async function guard(btn, fn) {
@@ -174,17 +173,21 @@ function showLogin(msg) {
 }
 
 async function enter(user) {
-  const { data, error } = await sb.from('admins').select('user_id').eq('user_id', user.id).maybeSingle();
-  if (error || !data) {
-    await sb.auth.signOut();
-    showLogin('This account is not an admin. Add it to the admins table first.');
-    return false;
+  let ok = false;
+  try {
+    ok = (await fs.getDoc(fs.doc(db, 'admins', user.uid))).exists();
+  } catch (e) {
+    console.warn(e);
+  }
+  if (!ok) {
+    notAdminMsg = `This account is not an admin. Firestore mein admins/${user.uid} document banao.`;
+    await signOut(auth);
+    return;
   }
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#who').textContent = user.email;
   route();
-  return true;
 }
 
 $('#pwToggle').addEventListener('click', () => {
@@ -196,22 +199,24 @@ $('#pwToggle').addEventListener('click', () => {
 
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!sb) return showLogin('Setup pending: js/config.js mein keys daalo.');
+  if (!auth) return showLogin('Setup pending: js/config.js mein Firebase config daalo.');
   const btn = $('#loginBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Signing in…';
-  const { data, error } = await sb.auth.signInWithPassword({ email: $('#email').value.trim(), password: $('#password').value });
+  try {
+    await signInWithEmailAndPassword(auth, $('#email').value.trim(), $('#password').value);
+    $('#password').value = '';
+  } catch (err) {
+    const bad = ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email'].includes(err.code);
+    showLogin(bad ? 'Wrong email or password.' : err.code === 'auth/too-many-requests' ? 'Too many attempts. Thodi der baad try karo.' : err.message);
+  }
   btn.disabled = false;
   btn.textContent = 'Sign in';
-  if (error) return showLogin(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message);
-  $('#password').value = '';
-  await enter(data.user);
 });
 
 $('#logoutBtn').addEventListener('click', async () => {
-  await sb.auth.signOut();
+  await signOut(auth);
   location.hash = '';
-  showLogin();
 });
 $('#openChat').addEventListener('click', () => {
   if (userSite) window.open(userSite, '_blank', 'noopener');
@@ -233,7 +238,7 @@ async function route() {
     await VIEWS[name]();
   } catch (err) {
     console.error(err);
-    view.innerHTML = `<div class="empty">${icon('ban', 28)}<p><b>Could not load data.</b><br>${esc(err.message || '')}<br>schema.sql Supabase mein run kiya?</p></div>`;
+    view.innerHTML = `<div class="empty">${icon('ban', 28)}<p><b>Could not load data.</b><br>${esc(err.message || '')}<br>Firestore database aur rules set kiye?</p></div>`;
   }
   updateBadge();
 }
@@ -244,31 +249,32 @@ $('#refreshBtn').addEventListener('click', route);
 
 /* ---------- dashboard ---------- */
 async function renderDashboard() {
-  const count = (q) => q.then((r) => r.count ?? 0);
-  const head = { count: 'exact', head: true };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const since = new Date(today);
   since.setDate(since.getDate() - 6);
 
-  const [total, active, links, pending, asked, askedToday, recent, week] = await Promise.all([
-    count(sb.from('qa_items').select('id', head)),
-    count(sb.from('qa_items').select('id', head).eq('is_active', true)),
-    count(sb.from('qa_links').select('id', head)),
-    count(sb.from('unanswered_questions').select('id', head).eq('status', 'pending')),
-    count(sb.from('chat_messages').select('id', head).eq('role', 'user')),
-    count(sb.from('chat_messages').select('id', head).eq('role', 'user').gte('created_at', today.toISOString())),
-    sb.from('unanswered_questions').select('id,question,created_at').eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
-    sb.from('chat_messages').select('created_at').eq('role', 'user').gte('created_at', since.toISOString()).limit(10000),
+  const [, pending, asked, askedToday, recent, week] = await Promise.all([
+    loadQA(),
+    countOf(fs.query(col('unanswered'), fs.where('status', '==', 'pending'))),
+    countOf(col('asked')),
+    countOf(fs.query(col('asked'), fs.where('ts', '>=', today.getTime()))),
+    fs.getDocs(fs.query(col('unanswered'), fs.orderBy('createdAt', 'desc'), fs.limit(50))),
+    fs.getDocs(fs.query(col('asked'), fs.where('ts', '>=', since.getTime()), fs.limit(10000))),
   ]);
+
+  const total = QA.length;
+  const active = QA.filter((i) => i.isActive).length;
+  const links = QA.reduce((n, i) => n + (i.links || []).length, 0);
+  const recentRows = recent.docs.map((d) => ({ id: d.id, ...d.data() })).filter((r) => r.status === 'pending').slice(0, 5);
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(since);
     d.setDate(since.getDate() + i);
     return { key: d.toDateString(), label: d.toLocaleDateString(undefined, { weekday: 'short' }), n: 0 };
   });
-  (week.data || []).forEach((r) => {
-    const hit = days.find((d) => d.key === new Date(r.created_at).toDateString());
+  week.docs.forEach((d) => {
+    const hit = days.find((x) => x.key === new Date(d.data().ts).toDateString());
     if (hit) hit.n++;
   });
   const max = Math.max(1, ...days.map((d) => d.n));
@@ -288,8 +294,8 @@ async function renderDashboard() {
       </section>
       <section class="panel"><h2>Waiting for a reply <a class="btn btn-ghost btn-sm" href="#unanswered">View all</a></h2>
         <div class="mini">${
-          (recent.data || []).length
-            ? recent.data.map((r) => `<div class="mini-row"><span title="${esc(r.question)}">${esc(r.question)}</span><small class="hint">${timeAgo(r.created_at)}</small></div>`).join('')
+          recentRows.length
+            ? recentRows.map((r) => `<div class="mini-row"><span title="${esc(r.question)}">${esc(r.question)}</span><small class="hint">${timeAgo(r.createdAt)}</small></div>`).join('')
             : `<div class="empty" style="padding:22px">All caught up. No pending questions.</div>`
         }</div>
       </section>
@@ -323,8 +329,8 @@ async function renderQuestions() {
 function drawList() {
   const q = filters.q.trim().toLowerCase();
   const rows = QA.filter((i) => {
-    if (filters.status === 'active' && !i.is_active) return false;
-    if (filters.status === 'inactive' && i.is_active) return false;
+    if (filters.status === 'active' && !i.isActive) return false;
+    if (filters.status === 'inactive' && i.isActive) return false;
     if (filters.cat !== 'all' && i.category !== filters.cat) return false;
     if (!q) return true;
     return [i.question, i.answer, i.category, (i.keywords || []).join(' ')].join(' ').toLowerCase().includes(q);
@@ -341,21 +347,20 @@ function drawList() {
 }
 
 function cardHTML(i) {
-  const links = (i.qa_links || []).slice().sort((a, b) => a.sort_order - b.sort_order);
   const kinds = { app: 0, website: 0, apk: 0 };
-  links.forEach((l) => kinds[l.kind]++);
-  return `<article class="q-card ${i.is_active ? '' : 'inactive'}" data-id="${i.id}">
+  (i.links || []).forEach((l) => kinds[l.kind]++);
+  return `<article class="q-card ${i.isActive ? '' : 'inactive'}" data-id="${i.id}">
     <h3>${esc(i.question)}</h3>
     <p>${esc(i.answer)}</p>
     <div class="tags">
-      <span class="badge ${i.is_active ? 'ok' : 'off'}">${i.is_active ? 'Active' : 'Hidden'}</span>
+      <span class="badge ${i.isActive ? 'ok' : 'off'}">${i.isActive ? 'Active' : 'Hidden'}</span>
       ${i.category ? `<span class="badge">${esc(i.category)}</span>` : ''}
       ${Object.entries(kinds).filter(([, n]) => n).map(([k, n]) => `<span class="badge warn">${icon(KICON[k], 12)} ${n} ${k}</span>`).join('')}
       ${(i.keywords || []).slice(0, 5).map((k) => `<span class="tag">${esc(k)}</span>`).join('')}
     </div>
     <div class="card-actions">
       <button class="btn btn-ghost btn-sm" data-act="edit">${icon('edit', 16)} Edit</button>
-      <button class="btn btn-ghost btn-sm" data-act="toggle">${i.is_active ? 'Hide' : 'Show'}</button>
+      <button class="btn btn-ghost btn-sm" data-act="toggle">${i.isActive ? 'Hide' : 'Show'}</button>
       <button class="btn btn-danger btn-sm" data-act="del">${icon('trash', 16)} Delete</button>
     </div></article>`;
 }
@@ -369,26 +374,27 @@ async function onListClick(e) {
   if (btn.dataset.act === 'edit') return openEditor(item);
   if (btn.dataset.act === 'toggle') {
     return guard(btn, async () => {
-      const { error } = await sb.from('qa_items').update({ is_active: !item.is_active }).eq('id', id);
-      if (error) throw error;
-      item.is_active = !item.is_active;
-      toast(item.is_active ? 'Answer is live for users' : 'Answer hidden from users', 'success');
+      await fs.updateDoc(fs.doc(db, 'qa', id), { isActive: !item.isActive, updatedAt: Date.now() });
+      item.isActive = !item.isActive;
+      toast(item.isActive ? 'Answer is live for users' : 'Answer hidden from users', 'success');
       drawList();
     });
   }
   if (btn.dataset.act === 'del') {
     if (!(await confirmBox('This question, its answer and all its links will be deleted permanently.'))) return;
-    const { error } = await sb.from('qa_items').delete().eq('id', id);
-    if (error) return toast(error.message, 'error');
+    try {
+      await fs.deleteDoc(fs.doc(db, 'qa', id));
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
     QA = QA.filter((x) => x.id !== id);
     toast('Deleted', 'success');
     drawList();
   }
 }
 
-function openEditor(item = null, prefill = null) {
-  const d = item || prefill || { question: '', answer: '', keywords: [], category: '', is_active: true, qa_links: [] };
-  const links = (d.qa_links || []).slice().sort((a, b) => a.sort_order - b.sort_order);
+function openEditor(item = null) {
+  const d = item || { question: '', answer: '', keywords: [], category: '', isActive: true, links: [] };
   const cats = [...new Set(QA.map((i) => i.category).filter(Boolean))];
   const m = openModal(`
     <h2>${item ? 'Edit question' : 'Add question'}</h2>
@@ -403,8 +409,8 @@ function openEditor(item = null, prefill = null) {
       <div class="field"><label for="fc">Category (optional)</label>
         <input class="input" id="fc" list="catlist" maxlength="60" value="${esc(d.category || '')}" placeholder="General">
         <datalist id="catlist">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
-      ${linksBlock(links)}
-      <label class="check" style="margin-bottom:16px"><input type="checkbox" id="fact" ${d.is_active ? 'checked' : ''}> Active (visible to users)</label>
+      ${linksBlock(d.links || [])}
+      <label class="check" style="margin-bottom:16px"><input type="checkbox" id="fact" ${d.isActive ? 'checked' : ''}> Active (visible to users)</label>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
@@ -423,14 +429,13 @@ function openEditor(item = null, prefill = null) {
           answer: $('#fa', m).value.trim(),
           keywords: parseKeywords($('#fk', m).value),
           category: $('#fc', m).value.trim(),
-          is_active: $('#fact', m).checked,
+          isActive: $('#fact', m).checked,
         },
         ls
       );
       closeModal();
       toast(item ? 'Changes saved' : 'Question added', 'success');
-      if (location.hash === '#questions') await renderQuestions();
-      else route();
+      route();
     });
   });
 }
@@ -449,8 +454,8 @@ async function renderUnanswered() {
   box.innerHTML = rows.length
     ? rows.map((u) => `<article class="q-card" data-id="${u.id}">
         <h3>${esc(u.question)}</h3>
-        <div class="tags"><span class="badge ${u.status === 'pending' ? 'warn' : u.status === 'answered' ? 'ok' : ''}">${u.status}</span><span class="tag">${timeAgo(u.created_at)}</span><span class="tag">user ${esc(u.session_id.slice(0, 6))}</span></div>
-        ${u.admin_reply ? `<p>${esc(u.admin_reply)}</p>` : ''}
+        <div class="tags"><span class="badge ${u.status === 'pending' ? 'warn' : u.status === 'answered' ? 'ok' : ''}">${u.status}</span><span class="tag">${timeAgo(u.createdAt)}</span><span class="tag">user ${esc(String(u.sessionId || '').slice(0, 6))}</span></div>
+        ${u.adminReply ? `<p>${esc(u.adminReply)}</p>` : ''}
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" data-act="reply">${icon('reply', 16)} ${u.status === 'answered' ? 'Reply again' : 'Reply'}</button>
           ${u.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-act="ignore">${icon('ban', 16)} Ignore</button>` : ''}
@@ -469,20 +474,20 @@ async function onUnClick(e) {
   if (btn.dataset.act === 'reply') return openReply(u);
   if (btn.dataset.act === 'ignore') {
     return guard(btn, async () => {
-      const { error } = await sb.from('unanswered_questions').update({ status: 'ignored' }).eq('id', id);
-      if (error) throw error;
+      await fs.updateDoc(fs.doc(db, 'unanswered', id), { status: 'ignored' });
       toast('Marked as ignored');
       renderUnanswered();
-      updateBadge();
     });
   }
   if (btn.dataset.act === 'del') {
     if (!(await confirmBox('This user question will be deleted permanently.'))) return;
-    const { error } = await sb.from('unanswered_questions').delete().eq('id', id);
-    if (error) return toast(error.message, 'error');
+    try {
+      await fs.deleteDoc(fs.doc(db, 'unanswered', id));
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
     toast('Deleted', 'success');
     renderUnanswered();
-    updateBadge();
   }
 }
 
@@ -492,8 +497,8 @@ function openReply(u) {
     <div class="reply-q"><small class="hint">User asked</small><br><b>${esc(u.question)}</b></div>
     <form id="rpForm">
       <div class="field"><label for="ra">Your reply</label>
-        <textarea class="textarea" id="ra" required maxlength="5000" placeholder="Write the answer the user will see in their chat">${esc(u.admin_reply || '')}</textarea></div>
-      ${linksBlock(u.reply_links || [])}
+        <textarea class="textarea" id="ra" required maxlength="5000" placeholder="Write the answer the user will see in their chat">${esc(u.adminReply || '')}</textarea></div>
+      ${linksBlock(u.replyLinks || [])}
       <label class="check" style="margin-bottom:10px"><input type="checkbox" id="rsave" checked> Save as Q&amp;A so future users get this answer automatically</label>
       <div class="field" id="rkwWrap"><label for="rk">Keywords for this Q&amp;A</label>
         <input class="input" id="rk" placeholder="keyword1, keyword2, हिंदी शब्द">
@@ -511,36 +516,38 @@ function openReply(u) {
     guard($('button[type=submit]', m), async () => {
       const answer = $('#ra', m).value.trim();
       const links = readLinks(m);
-      let qaId = u.qa_id || null;
+      let qaId = u.qaId || null;
       if ($('#rsave', m).checked) {
         qaId = await saveItem(
-          { id: null, question: u.question.slice(0, 500), answer, keywords: parseKeywords($('#rk', m).value), category: '', is_active: true },
+          { id: null, question: String(u.question).slice(0, 500), answer, keywords: parseKeywords($('#rk', m).value), category: '', isActive: true },
           links
         );
       }
-      const up = await sb.from('unanswered_questions').update({
-        status: 'answered', admin_reply: answer, reply_links: links, qa_id: qaId, replied_at: new Date().toISOString(),
-      }).eq('id', u.id);
-      if (up.error) throw up.error;
-      const ins = await sb.from('chat_messages').insert({ session_id: u.session_id, role: 'bot', content: answer, links, qa_id: qaId });
-      if (ins.error) throw ins.error;
+      await fs.updateDoc(fs.doc(db, 'unanswered', u.id), {
+        status: 'answered', adminReply: answer, replyLinks: links, qaId, repliedAt: Date.now(),
+      });
+      // user ki chat mein reply turant dikhta hai (unka chat page live sync karta hai)
+      await fs.setDoc(fs.doc(db, 'chats', u.sessionId, 'messages', uuid()), {
+        role: 'bot', content: answer, links, qaId, ts: Date.now(),
+      });
       closeModal();
       toast('Reply sent to user', 'success');
       renderUnanswered();
-      updateBadge();
     });
   });
 }
 
 /* ---------- boot ---------- */
-(async function boot() {
-  if (!configured) {
-    $('#setupBanner').classList.remove('hidden');
-    showLogin();
-    return;
-  }
-  const { data } = await sb.auth.getSession();
-  if (data.session) await enter(data.session.user);
-  else showLogin();
-  sb.auth.onAuthStateChange((ev) => ev === 'SIGNED_OUT' && showLogin());
-})();
+if (!configured) {
+  $('#setupBanner').textContent = 'Setup pending: js/config.js mein Firebase config daalo.';
+  $('#setupBanner').classList.remove('hidden');
+  showLogin();
+} else {
+  onAuthStateChanged(auth, (user) => {
+    if (user) enter(user);
+    else {
+      showLogin(notAdminMsg);
+      notAdminMsg = '';
+    }
+  });
+}
