@@ -1,7 +1,7 @@
 {
-  "name": "Inliegal AI Admin",
-  "short_name": "Inliegal Admin",
-  "description": "Admin panel for Inliegal AI.",
+  "name": "Illegal AI Admin",
+  "short_name": "Illegal Admin",
+  "description": "Admin panel for Illegal AI.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
