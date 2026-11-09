@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
-  <title>Admin &middot; Inliegal AI</title>
+  <title>Admin &middot; Illegal AI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0b5d55">
@@ -21,20 +21,12 @@
   </script>
 </head>
 <body>
-  <!-- Error dikhane wala debug code (kaam hone ke baad hata sakte ho) -->
-  <script>
-  window.addEventListener('error', function (e) {
-    var t = e.target && e.target.src ? 'File load nahi hui: ' + e.target.src : (e.message || 'error');
-    document.body.insertAdjacentHTML('afterbegin', '<pre style="white-space:pre-wrap;background:#fde8df;color:#7a2a0c;padding:12px;margin:0;font-size:14px">' + t + '</pre>');
-  }, true);
-  </script>
-
   <!-- LOGIN -->
   <div class="login-wrap hidden" id="login">
     <form class="login-card" id="loginForm" autocomplete="on">
       <div class="logo" id="loginLogo"></div>
       <h1>Admin sign in</h1>
-      <p>Sign in to manage Inliegal AI answers, links and user questions.</p>
+      <p>Sign in to manage Illegal AI answers, links and user questions.</p>
       <div class="err hidden" id="loginErr" role="alert"></div>
       <div class="field">
         <label for="email">Email</label>
@@ -57,7 +49,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="side-brand">
         <div class="logo" id="sideLogo"></div>
-        <div><b>Inliegal AI</b><small>Admin panel</small></div>
+        <div><b>Illegal AI</b><small>Admin panel</small></div>
       </div>
       <nav class="nav" id="nav">
         <a href="#dashboard" data-v="dashboard"></a>
