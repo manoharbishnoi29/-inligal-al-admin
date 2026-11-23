@@ -76,6 +76,7 @@
       </nav>
       <div class="side-foot">
         <div class="who" id="who"></div>
+        <button type="button" id="openKb">🧠 AI Learning</button>
         <button type="button" id="openChat"></button>
         <button type="button" id="logoutBtn"></button>
       </div>
@@ -97,6 +98,9 @@
     Setup pending: add your Firebase config in js/config.js.
   </div>
 
+  <script>
+    document.getElementById('openKb').addEventListener('click', function () { location.href = 'knowledge.html'; });
+  </script>
   <script type="module" src="js/admin.js"></script>
 </body>
 </html>
